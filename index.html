@@ -328,17 +328,9 @@ a{color:var(--slate);text-decoration:none;}
     <div><div class="topbar-title">Finance</div><div class="topbar-sub">Know your runway</div></div>
     <div class="topbar-actions">
       <button class="icon-btn" onclick="openAddExpense()"><i data-lucide="plus" style="width:18px;height:18px"></i></button>
-      <button class="icon-btn" onclick="aiFinanceInsight()"><i data-lucide="sparkles" style="width:18px;height:18px"></i></button>
     </div>
   </div>
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab(this,'ft-overview')">Overview</div>
-    <div class="tab" onclick="switchTab(this,'ft-expenses')">Expenses</div>
-    <div class="tab" onclick="switchTab(this,'ft-budget')">Budget</div>
-  </div>
   <div class="scroll" id="ft-overview"><div class="pc" id="finance-overview-content"></div></div>
-  <div class="scroll" id="ft-expenses" style="display:none"><div class="pc" id="finance-expenses-content"></div></div>
-  <div class="scroll" id="ft-budget" style="display:none"><div class="pc" id="finance-budget-content"></div></div>
 </div>
 
 <!-- ══════════════════════════════
@@ -493,7 +485,7 @@ a{color:var(--slate);text-decoration:none;}
     <div class="mhandle"></div><div class="mtitle">Add Expense</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div class="frow">
-        <div class="fg"><label class="flabel">Amount *</label><input id="e-amt" type="number" placeholder="0.00" step="0.01"/></div>
+        <div class="fg"><label class="flabel">Amount *</label><input id="e-amt" type="number" placeholder="0.000" step="0.001"/></div>
         <div class="fg"><label class="flabel">Category</label>
           <select id="e-cat">
             <option value="Food">🍔 Food</option><option value="Transport">🚗 Transport</option>
@@ -755,8 +747,8 @@ ${jobs.slice(0,10).map(j=>`- ${j.role} at ${j.company} [${j.status}] applied ${j
 LEARNING: ${doneTopics}/${topics.length} topics done
 ${topics.slice(0,8).map(t=>`- ${t.name} [${t.status}] (${t.phase})`).join('\n')}
 
-FINANCE: Total spent this month: ${fmtMoney(totalExp)}
-Budget: Income ${fmtMoney(budget.income)}, Savings ${fmtMoney(budget.savings)}
+FINANCE: Total spent this month: ر.ع ${Number(totalExp).toFixed(3)}
+Currency: Omani Rial (OMR)
 
 TASKS: ${tasks.filter(t=>!t.done).length} pending, ${tasks.filter(t=>t.done).length} done
 HABITS TODAY: ${todayHabits}/${habits.length} hit
@@ -1391,129 +1383,84 @@ function saveExpense(){
   saveExpenses();closeModal('m-expense');renderFinance();toast('✓ Expense added');
 }
 
-function deleteExpense(id){expenses=expenses.filter(e=>e.id!==id);saveExpenses();renderExpensesList();renderFinanceOverview();}
+function deleteExpense(id){expenses=expenses.filter(e=>e.id!==id);saveExpenses();renderFinance();}
 
-function renderFinance(){renderFinanceOverview();renderExpensesList();renderBudgetForm();}
+function renderFinance(){renderFinanceMain();}
 
-function calcRunway(){
-  const now=new Date();
-  const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0];
-  const thisMonthExp=expenses.filter(e=>e.date>=monthStart);
-  const totalThisMonth=thisMonthExp.reduce((a,e)=>a+(parseFloat(e.amount)||0),0);
-  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const daysPassed=now.getDate();
-  const dailyRate=daysPassed>0?totalThisMonth/daysPassed:0;
-  const monthlyRate=dailyRate*30;
-  const savings=parseFloat(budget.savings)||0;
-  const income=parseFloat(budget.income)||0;
-  const netMonthly=monthlyRate-income;
-  if(savings<=0||netMonthly<=0)return{months:999,days:0,monthlySpend:monthlyRate,totalThisMonth,dailyRate};
-  const totalDays=savings/netMonthly*30;
-  return{months:Math.floor(totalDays/30),days:Math.floor(totalDays%30),monthlySpend:monthlyRate,totalThisMonth,dailyRate,netMonthly};
-}
+function fmtOMR(n){return 'ر.ع '+Number(n||0).toFixed(3);}
 
-function renderFinanceOverview(){
+function renderFinanceMain(){
   const el=document.getElementById('finance-overview-content');if(!el)return;
-  const rw=calcRunway();
+  const catIcons={Food:'🍔',Transport:'🚗',Bills:'💡',Subscriptions:'📱',Entertainment:'🎬',Other:'📦'};
   const catColors={Food:'#c4621a',Transport:'#3a5a7a',Bills:'#8a7a68',Subscriptions:'#7a6a3a',Entertainment:'#4a7a58',Other:'#6a5a4a'};
+
+  // Totals
   const now=new Date();
   const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0];
-  const thisMonthExp=expenses.filter(e=>e.date>=monthStart);
-  const byCat={};thisMonthExp.forEach(e=>{byCat[e.category]=(byCat[e.category]||0)+(parseFloat(e.amount)||0);});
-  const runwayText=rw.months>=99?'∞':'${rw.months}mo ${rw.days}d';
-  const runwayDisplay=rw.months>=99?'∞':`${rw.months}mo ${rw.days}d`;
+  const thisMonth=expenses.filter(e=>e.date>=monthStart);
+  const totalMonth=thisMonth.reduce((a,e)=>a+(parseFloat(e.amount)||0),0);
+  const totalAll=expenses.reduce((a,e)=>a+(parseFloat(e.amount)||0),0);
+
+  // By category this month
+  const byCat={};
+  thisMonth.forEach(e=>{byCat[e.category]=(byCat[e.category]||0)+(parseFloat(e.amount)||0);});
+
   let html=`
-    <div class="runway-card">
-      <div style="font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Runway Left</div>
-      <div class="runway-num">${runwayDisplay}</div>
-      <div class="runway-sub">${rw.months>=99?'Set budget to calculate':'at current spending rate'}</div>
-      ${rw.netMonthly>0?`<div style="margin-top:10px;font-size:12px;opacity:.8">Burning ~${fmtMoney(rw.netMonthly)}/month</div>`:''}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="stat-item"><div class="stat-num" style="font-size:18px">${fmtMoney(rw.totalThisMonth)}</div><div class="stat-lbl">This Month</div></div>
-      <div class="stat-item"><div class="stat-num" style="font-size:18px">${fmtMoney(rw.dailyRate)}</div><div class="stat-lbl">Daily Rate</div></div>
-      <div class="stat-item"><div class="stat-num" style="font-size:18px">${fmtMoney(budget.income||0)}</div><div class="stat-lbl">Income</div></div>
-      <div class="stat-item"><div class="stat-num" style="font-size:18px">${fmtMoney(budget.savings||0)}</div><div class="stat-lbl">Savings</div></div>
+    <div style="background:linear-gradient(135deg,var(--slate),#2a4a6a);color:var(--cream);border-radius:14px;padding:20px;text-align:center">
+      <div style="font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${new Date().toLocaleDateString('en-US',{month:'long',year:'numeric'})}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:38px;font-weight:700;line-height:1">${fmtOMR(totalMonth)}</div>
+      <div style="font-size:12px;opacity:.7;margin-top:6px">spent this month</div>
     </div>`;
+
+  // Category breakdown
   if(Object.keys(byCat).length>0){
-    html+=`<div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:10px">Spending by Category</div>
+    html+=`<div class="card"><div style="font-size:12px;font-weight:600;margin-bottom:12px">By Category</div>
       ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>{
-        const pct=Math.round(amt/rw.totalThisMonth*100);
-        return `<div style="margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-            <div style="font-size:12px">${cat}</div>
-            <div style="font-size:12px;font-family:monospace;font-weight:600">${fmtMoney(amt)} <span style="color:var(--stone)">${pct}%</span></div>
+        const pct=totalMonth>0?Math.round(amt/totalMonth*100):0;
+        return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:20px;width:28px;text-align:center">${catIcons[cat]||'📦'}</div>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <div style="font-size:13px">${cat}</div>
+              <div style="font-size:13px;font-family:monospace;font-weight:600;color:var(--rust)">${fmtOMR(amt)}</div>
+            </div>
+            <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${catColors[cat]||'var(--slate)'}"></div></div>
           </div>
-          <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${catColors[cat]||'var(--slate)'}"></div></div>
         </div>`;
       }).join('')}
     </div>`;
   }
-  html+=`<button class="btn btn-p btn-full" onclick="openAddExpense()"><i data-lucide="plus" style="width:16px;height:16px"></i> Add Expense</button>`;
-  el.innerHTML=html;lucide.createIcons();
-}
 
-function renderExpensesList(){
-  const el=document.getElementById('finance-expenses-content');if(!el)return;
-  const catIcons={Food:'🍔',Transport:'🚗',Bills:'💡',Subscriptions:'📱',Entertainment:'🎬',Other:'📦'};
+  // Expenses list grouped by date
   if(expenses.length===0){
-    el.innerHTML=`<div class="empty"><div class="empty-icon">💸</div><p>No expenses yet</p></div><button class="btn btn-p btn-full" onclick="openAddExpense()">Add First Expense</button>`;
-    return;
-  }
-  // Group by date
-  const grouped={};
-  expenses.forEach(e=>{if(!grouped[e.date])grouped[e.date]=[];grouped[e.date].push(e);});
-  let html=`<button class="btn btn-s btn-sm btn-full" onclick="openAddExpense()" style="margin-bottom:4px"><i data-lucide="plus" style="width:14px;height:14px"></i> Add Expense</button>`;
-  Object.entries(grouped).sort((a,b)=>b[0].localeCompare(a[0])).forEach(([date,exps])=>{
-    const total=exps.reduce((a,e)=>a+(parseFloat(e.amount)||0),0);
-    html+=`<div><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div style="font-size:11px;color:var(--stone);font-weight:500">${fmtDate(date)}</div><div style="font-size:11px;font-family:monospace;color:var(--rust)">${fmtMoney(total)}</div></div>
-      <div class="card" style="padding:8px">
-      ${exps.map(e=>`<div class="expense-row">
-        <div style="width:28px;height:28px;border-radius:8px;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${catIcons[e.category]||'📦'}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:500">${esc(e.category)}</div>
-          ${e.note?`<div style="font-size:11px;color:var(--stone)">${esc(e.note)}</div>`:''}
+    html+=`<div class="empty"><div class="empty-icon">💸</div><p>No expenses yet. Add your first one!</p></div>`;
+  } else {
+    const grouped={};
+    expenses.forEach(e=>{if(!grouped[e.date])grouped[e.date]=[];grouped[e.date].push(e);});
+    html+=`<div style="font-size:11px;color:var(--stone);font-weight:500;text-transform:uppercase;letter-spacing:.06em">All Expenses</div>`;
+    Object.entries(grouped).sort((a,b)=>b[0].localeCompare(a[0])).forEach(([date,exps])=>{
+      const dayTotal=exps.reduce((a,e)=>a+(parseFloat(e.amount)||0),0);
+      html+=`<div class="card" style="padding:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;font-weight:600;color:var(--stone)">${fmtDate(date)}</div>
+          <div style="font-size:12px;font-family:monospace;font-weight:600;color:var(--rust)">${fmtOMR(dayTotal)}</div>
         </div>
-        <div class="exp-amount" style="color:var(--rust)">${fmtMoney(e.amount)}</div>
-        <button onclick="deleteExpense('${e.id}')" style="background:none;border:none;color:var(--stone);cursor:pointer;padding:4px;margin-left:4px"><i data-lucide="x" style="width:13px;height:13px"></i></button>
-      </div>`).join('')}
-      </div></div>`;
-  });
+        ${exps.map(e=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:18px;width:24px;text-align:center">${catIcons[e.category]||'📦'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500">${esc(e.category)}</div>
+            ${e.note?`<div style="font-size:11px;color:var(--stone)">${esc(e.note)}</div>`:''}
+          </div>
+          <div style="font-family:monospace;font-size:14px;font-weight:600;color:var(--rust)">${fmtOMR(e.amount)}</div>
+          <button onclick="deleteExpense('${e.id}')" style="background:none;border:none;color:var(--stone);cursor:pointer;padding:4px"><i data-lucide="x" style="width:13px;height:13px"></i></button>
+        </div>`).join('')}
+      </div>`;
+    });
+  }
+
   el.innerHTML=html;lucide.createIcons();
 }
 
-function renderBudgetForm(){
-  const el=document.getElementById('finance-budget-content');if(!el)return;
-  el.innerHTML=`
-    <div class="card">
-      <div style="font-size:14px;font-weight:600;margin-bottom:12px">Monthly Budget Setup</div>
-      <div class="fg" style="margin-bottom:10px"><label class="flabel">Monthly Income (after tax)</label>
-        <input type="number" id="b-income" value="${budget.income||''}" placeholder="0" step="0.01"/>
-      </div>
-      <div class="fg" style="margin-bottom:10px"><label class="flabel">Current Savings / Emergency Fund</label>
-        <input type="number" id="b-savings" value="${budget.savings||''}" placeholder="0" step="0.01"/>
-      </div>
-      <button class="btn btn-p btn-full" onclick="saveBudgetForm()"><i data-lucide="save" style="width:16px;height:16px"></i> Save Budget</button>
-    </div>`;
-}
-
-function saveBudgetForm(){
-  budget.income=parseFloat(document.getElementById('b-income').value)||0;
-  budget.savings=parseFloat(document.getElementById('b-savings').value)||0;
-  saveBudget();renderFinanceOverview();toast('✓ Budget saved');
-}
-
-async function aiFinanceInsight(){
-  document.getElementById('m-ai-title').textContent='Finance Insight';
-  document.getElementById('m-ai-body').innerHTML='<div class="ai-loading"><div class="spinner"></div> Analyzing your finances…</div>';
-  openModal('m-ai');
-  try{
-    const rw=calcRunway();
-    const r=await callAI('You are a practical, supportive financial advisor inside مسيرة. Give specific, actionable advice based on real spending data. Be honest but encouraging.',
-      `Analyze this spending data and give insights.\n\nMonthly spending: ${fmtMoney(rw.monthlySpend)}\nIncome: ${fmtMoney(budget.income||0)}\nSavings runway: ${rw.months} months ${rw.days} days\n\nRecent expenses:\n${expenses.slice(0,15).map(e=>`${e.date}: ${e.category} ${fmtMoney(e.amount)}${e.note?' ('+e.note+')':''}`).join('\n')}\n\nGive: 1) Key observations, 2) Any spending spikes, 3) 2-3 specific suggestions to extend runway, 4) What's going well financially.`);
-    document.getElementById('m-ai-body').innerHTML=`<div class="ai-result">${aiText(r)}</div><button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal('m-ai')">Close</button>`;
-  }catch(e){document.getElementById('m-ai-body').innerHTML=`<div style="color:var(--rust);font-size:13px">${esc(e.message)}</div>`;}
-}
 
 // ═══════════════════════════════════════════
 //  PROFILE
